@@ -249,6 +249,30 @@ ollama pull gpt-oss:20b  # Pull a tool-capable model
 ollama pull llama3.3     # Or another model
 ```
 
+### Ollama not using GPU
+
+OpenClaw does not control whether Ollama uses GPU or CPU; that is entirely configured and run by Ollama on your machine. If Ollama appears to run on CPU only:
+
+1. **Check what Ollama is using**  
+   Run `ollama ps` and look at the "Processor" column: `100% GPU` = on GPU, `100% CPU` = on CPU, or a split like `48%/52% CPU/GPU`.
+
+2. **Avoid forcing CPU**  
+   Ensure these are **not** set (they would force or prefer CPU):
+   - `OLLAMA_LLM_LIBRARY=cpu` or `cpu_avx` or `cpu_avx2` (forces CPU backend).
+   - `CUDA_VISIBLE_DEVICES=-1` (NVIDIA: hides GPUs, so Ollama uses CPU).
+
+3. **NVIDIA (Windows/Linux)**  
+   Ollama needs [NVIDIA driver 531+](https://docs.ollama.com/gpu) and a GPU with compute capability 5.0+. Update to the latest driver. To see which GPU Ollama can use: `nvidia-smi -L`. Logs: Windows: `%LOCALAPPDATA%\Ollama\server.log`; Linux: `journalctl -u ollama -f`.
+
+4. **Enable debug logs**  
+   Quit Ollama from the tray, then start with debug to see GPU detection:
+   - **Windows (PowerShell):** `$env:OLLAMA_DEBUG="1"; & "ollama app.exe"`
+   - **Linux/macOS:** `OLLAMA_DEBUG=1 ollama serve`  
+   Look for "Dynamic LLM libraries" and any GPU-related errors in the log.
+
+5. **Official docs**  
+   Hardware support and troubleshooting: [Ollama GPU](https://docs.ollama.com/gpu), [Ollama Troubleshooting](https://docs.ollama.com/troubleshooting).
+
 ### Connection refused
 
 Check that Ollama is running on the correct port:
