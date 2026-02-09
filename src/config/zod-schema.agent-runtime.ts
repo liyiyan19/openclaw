@@ -168,10 +168,21 @@ export const ToolPolicySchema = ToolPolicyBaseSchema.superRefine((value, ctx) =>
   }
 }).optional();
 
+function normalizeSearchProvider(val: unknown): unknown {
+  if (typeof val === "string") {
+    const s = val.trim().toLowerCase();
+    if (s === "brave" || s === "perplexity" || s === "duckduckgo") return s;
+  }
+  return val;
+}
+
 export const ToolsWebSearchSchema = z
   .object({
     enabled: z.boolean().optional(),
-    provider: z.union([z.literal("brave"), z.literal("perplexity")]).optional(),
+    provider: z.preprocess(
+      normalizeSearchProvider,
+      z.union([z.literal("brave"), z.literal("perplexity"), z.literal("duckduckgo")]).optional(),
+    ),
     apiKey: z.string().optional(),
     maxResults: z.number().int().positive().optional(),
     timeoutSeconds: z.number().int().positive().optional(),

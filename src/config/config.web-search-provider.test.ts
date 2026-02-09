@@ -21,4 +21,35 @@ describe("web search provider config", () => {
 
     expect(res.ok).toBe(true);
   });
+
+  it("accepts duckduckgo provider (no API key required)", () => {
+    const res = validateConfigObject({
+      tools: {
+        web: {
+          search: {
+            enabled: true,
+            provider: "duckduckgo",
+          },
+        },
+      },
+    });
+
+    expect(res.ok).toBe(true);
+  });
+
+  it("normalizes provider to lowercase (e.g. DuckDuckGo -> duckduckgo)", () => {
+    const res = validateConfigObject({
+      tools: {
+        web: {
+          search: {
+            enabled: true,
+            provider: "DuckDuckGo",
+          },
+        },
+      },
+    });
+
+    expect(res.ok).toBe(true);
+    expect(res.ok && res.config.tools?.web?.search?.provider).toBe("duckduckgo");
+  });
 });

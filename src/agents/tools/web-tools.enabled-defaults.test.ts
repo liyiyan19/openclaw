@@ -493,3 +493,50 @@ describe("web_search external content wrapping", () => {
     expect(details.citations?.[0]).not.toContain("<<<EXTERNAL_UNTRUSTED_CONTENT>>>");
   });
 });
+
+describe("web_search duckduckgo provider", () => {
+  const priorFetch = global.fetch;
+
+  afterEach(() => {
+    // @ts-expect-error global fetch cleanup
+    global.fetch = priorFetch;
+  });
+
+  it("returns tool without API key and calls DuckDuckGo Instant Answer API", async () => {
+    const mockFetch = vi.fn(() =>
+      Promise.resolve({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            AbstractText: "DuckDuckGo is a search engine.",
+            AbstractURL: "https://duckduckgo.com/about",
+            RelatedTopics: [
+              { Text: "First topic", FirstURL: "https://example.com/first" },
+              { Text: "Second topic", FirstURL: "https://example.com/second" },
+            ],
+          }),
+      } as Response),
+    );
+    // @ts-expect-error mock fetch
+    global.fetch = mockFetch;
+
+    const tool = createWebSearchTool({
+      config: { tools: { web: { search: { provider: "duckduckgo" } } } },
+      sandboxed: false,
+    });
+    expect(tool?.name).toBe("web_search");
+
+    const result = await tool?.execute?.(1, { query: "duckduckgo" });
+    const details = result?.details as {
+      provider?: string;
+      results?: Array<{ title: string; url: string; description: string }>;
+    };
+
+    expect(details.provider).toBe("duckduckgo");
+    expect(details.results?.length).toBeGreaterThanOrEqual(1);
+    expect(mockFetch).toHaveBeenCalled();
+    const callUrl = mockFetch.mock.calls[0][0] as string;
+    expect(callUrl).toContain("api.duckduckgo.com");
+    expect(callUrl).toContain("q=duckduckgo");
+  });
+});

@@ -17,11 +17,12 @@ import {
   writeCache,
 } from "./web-shared.js";
 
-const SEARCH_PROVIDERS = ["brave", "perplexity"] as const;
+const SEARCH_PROVIDERS = ["brave", "perplexity", "duckduckgo"] as const;
 const DEFAULT_SEARCH_COUNT = 5;
 const MAX_SEARCH_COUNT = 10;
 
 const BRAVE_SEARCH_ENDPOINT = "https://api.search.brave.com/res/v1/web/search";
+const DUCKDUCKGO_INSTANT_ANSWER_URL = "https://api.duckduckgo.com/";
 const DEFAULT_PERPLEXITY_BASE_URL = "https://openrouter.ai/api/v1";
 const PERPLEXITY_DIRECT_BASE_URL = "https://api.perplexity.ai";
 const DEFAULT_PERPLEXITY_MODEL = "perplexity/sonar-pro";
@@ -101,6 +102,20 @@ type PerplexitySearchResponse = {
   citations?: string[];
 };
 
+/** DuckDuckGo Instant Answer API response (format=json). */
+type DuckDuckGoRelatedTopic = {
+  Text?: string;
+  FirstURL?: string;
+  Topics?: DuckDuckGoRelatedTopic[];
+};
+type DuckDuckGoResponse = {
+  AbstractText?: string;
+  AbstractURL?: string;
+  AbstractSource?: string;
+  Redirect?: string;
+  RelatedTopics?: DuckDuckGoRelatedTopic[];
+};
+
 type PerplexityBaseUrlHint = "direct" | "openrouter";
 
 function resolveSearchConfig(cfg?: OpenClawConfig): WebSearchConfig {
@@ -151,6 +166,9 @@ function resolveSearchProvider(search?: WebSearchConfig): (typeof SEARCH_PROVIDE
       : "";
   if (raw === "perplexity") {
     return "perplexity";
+  }
+  if (raw === "duckduckgo") {
+    return "duckduckgo";
   }
   if (raw === "brave") {
     return "brave";
@@ -309,6 +327,82 @@ function resolveSiteName(url: string | undefined): string | undefined {
   }
 }
 
+/** Flatten RelatedTopics (may contain nested Topics) into { text, url } pairs. */
+function flattenDuckDuckGoRelatedTopics(
+  topics: DuckDuckGoRelatedTopic[] | undefined,
+): Array<{ text: string; url: string }> {
+  if (!Array.isArray(topics)) {
+    return [];
+  }
+  const out: Array<{ text: string; url: string }> = [];
+  for (const item of topics) {
+    if (item.Topics?.length) {
+      out.push(...flattenDuckDuckGoRelatedTopics(item.Topics));
+    } else if (
+      typeof item.Text === "string" &&
+      item.Text.trim() &&
+      typeof item.FirstURL === "string"
+    ) {
+      out.push({ text: item.Text.trim(), url: item.FirstURL });
+    }
+  }
+  return out;
+}
+
+async function runDuckDuckGoSearch(params: {
+  query: string;
+  count: number;
+  timeoutSeconds: number;
+}): Promise<Array<{ title: string; url: string; description: string; siteName?: string }>> {
+  const url = new URL(DUCKDUCKGO_INSTANT_ANSWER_URL);
+  url.searchParams.set("q", params.query);
+  url.searchParams.set("format", "json");
+  url.searchParams.set("no_html", "1");
+  url.searchParams.set("skip_disambig", "1");
+
+  const res = await fetch(url.toString(), {
+    method: "GET",
+    headers: { Accept: "application/json" },
+    signal: withTimeout(undefined, params.timeoutSeconds * 1000),
+  });
+
+  if (!res.ok) {
+    const detail = await readResponseText(res);
+    throw new Error(`DuckDuckGo API error (${res.status}): ${detail || res.statusText}`);
+  }
+
+  const data = (await res.json()) as DuckDuckGoResponse;
+  const results: Array<{ title: string; url: string; description: string; siteName?: string }> = [];
+
+  const abstractText = typeof data.AbstractText === "string" ? data.AbstractText.trim() : "";
+  const abstractUrl = typeof data.AbstractURL === "string" ? data.AbstractURL.trim() : "";
+  if (abstractText) {
+    const title = abstractUrl ? (resolveSiteName(abstractUrl) ?? "Abstract") : "Abstract";
+    results.push({
+      title: wrapWebContent(title, "web_search"),
+      url: abstractUrl || "",
+      description: wrapWebContent(abstractText, "web_search"),
+      siteName: abstractUrl ? resolveSiteName(abstractUrl) : undefined,
+    });
+  }
+
+  const related = flattenDuckDuckGoRelatedTopics(data.RelatedTopics);
+  const need = Math.max(0, params.count - results.length);
+  for (let i = 0; i < Math.min(related.length, need); i++) {
+    const { text, url: u } = related[i];
+    const siteName = resolveSiteName(u);
+    const title = siteName ?? text.slice(0, 80);
+    results.push({
+      title: title ? wrapWebContent(title, "web_search") : "",
+      url: u,
+      description: wrapWebContent(text, "web_search"),
+      siteName: siteName ?? undefined,
+    });
+  }
+
+  return results;
+}
+
 async function runPerplexitySearch(params: {
   query: string;
   apiKey: string;
@@ -369,6 +463,7 @@ async function runWebSearch(params: {
       ? `${params.provider}:${params.query}:${params.count}:${params.country || "default"}:${params.search_lang || "default"}:${params.ui_lang || "default"}:${params.freshness || "default"}`
       : `${params.provider}:${params.query}:${params.count}:${params.country || "default"}:${params.search_lang || "default"}:${params.ui_lang || "default"}`,
   );
+  const isDuckDuckGo = params.provider === "duckduckgo";
   const cached = readCache(SEARCH_CACHE, cacheKey);
   if (cached) {
     return { ...cached.value, cached: true };
@@ -392,6 +487,23 @@ async function runWebSearch(params: {
       tookMs: Date.now() - start,
       content: wrapWebContent(content),
       citations,
+    };
+    writeCache(SEARCH_CACHE, cacheKey, payload, params.cacheTtlMs);
+    return payload;
+  }
+
+  if (isDuckDuckGo) {
+    const mapped = await runDuckDuckGoSearch({
+      query: params.query,
+      count: params.count,
+      timeoutSeconds: params.timeoutSeconds,
+    });
+    const payload = {
+      query: params.query,
+      provider: params.provider,
+      count: mapped.length,
+      tookMs: Date.now() - start,
+      results: mapped,
     };
     writeCache(SEARCH_CACHE, cacheKey, payload, params.cacheTtlMs);
     return payload;
@@ -473,7 +585,9 @@ export function createWebSearchTool(options?: {
   const description =
     provider === "perplexity"
       ? "Search the web using Perplexity Sonar (direct or via OpenRouter). Returns AI-synthesized answers with citations from real-time web search."
-      : "Search the web using Brave Search API. Supports region-specific and localized search via country and language parameters. Returns titles, URLs, and snippets for fast research.";
+      : provider === "duckduckgo"
+        ? "Search the web using DuckDuckGo (no API key required). Returns instant answers and related topics with titles, URLs, and snippets."
+        : "Search the web using Brave Search API. Supports region-specific and localized search via country and language parameters. Returns titles, URLs, and snippets for fast research.";
 
   return {
     label: "Web Search",
@@ -483,10 +597,14 @@ export function createWebSearchTool(options?: {
     execute: async (_toolCallId, args) => {
       const perplexityAuth =
         provider === "perplexity" ? resolvePerplexityApiKey(perplexityConfig) : undefined;
-      const apiKey =
-        provider === "perplexity" ? perplexityAuth?.apiKey : resolveSearchApiKey(search);
+      const apiKey: string =
+        provider === "perplexity"
+          ? (perplexityAuth?.apiKey ?? "")
+          : provider === "duckduckgo"
+            ? ""
+            : (resolveSearchApiKey(search) ?? "");
 
-      if (!apiKey) {
+      if (provider !== "duckduckgo" && !apiKey) {
         return jsonResult(missingSearchKeyPayload(provider));
       }
       const params = args as Record<string, unknown>;

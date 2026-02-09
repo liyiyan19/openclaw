@@ -268,7 +268,7 @@ OpenClaw does not control whether Ollama uses GPU or CPU; that is entirely confi
    Quit Ollama from the tray, then start with debug to see GPU detection:
    - **Windows (PowerShell):** `$env:OLLAMA_DEBUG="1"; & "ollama app.exe"`
    - **Linux/macOS:** `OLLAMA_DEBUG=1 ollama serve`  
-   Look for "Dynamic LLM libraries" and any GPU-related errors in the log.
+     Look for "Dynamic LLM libraries" and any GPU-related errors in the log.
 
 5. **Official docs**  
    Hardware support and troubleshooting: [Ollama GPU](https://docs.ollama.com/gpu), [Ollama Troubleshooting](https://docs.ollama.com/troubleshooting).

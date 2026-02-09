@@ -1,9 +1,9 @@
 ---
-summary: "Web search + fetch tools (Brave Search API, Perplexity direct/OpenRouter)"
+summary: "Web search + fetch tools (Brave, Perplexity, DuckDuckGo)"
 read_when:
   - You want to enable web_search or web_fetch
   - You need Brave Search API key setup
-  - You want to use Perplexity Sonar for web search
+  - You want to use Perplexity Sonar or DuckDuckGo for web search
 title: "Web Tools"
 ---
 
@@ -11,7 +11,7 @@ title: "Web Tools"
 
 OpenClaw ships two lightweight web tools:
 
-- `web_search` — Search the web via Brave Search API (default) or Perplexity Sonar (direct or via OpenRouter).
+- `web_search` — Search the web via Brave Search API (default), Perplexity Sonar (direct or via OpenRouter), or DuckDuckGo (no API key).
 - `web_fetch` — HTTP fetch + readable extraction (HTML → markdown/text).
 
 These are **not** browser automation. For JS-heavy sites or logins, use the
@@ -22,6 +22,7 @@ These are **not** browser automation. For JS-heavy sites or logins, use the
 - `web_search` calls your configured provider and returns results.
   - **Brave** (default): returns structured results (title, URL, snippet).
   - **Perplexity**: returns AI-synthesized answers with citations from real-time web search.
+  - **DuckDuckGo**: returns instant answers and related topics (no API key required).
 - Results are cached by query for 15 minutes (configurable).
 - `web_fetch` does a plain HTTP GET and extracts readable content
   (HTML → markdown/text). It does **not** execute JavaScript.
@@ -33,6 +34,7 @@ These are **not** browser automation. For JS-heavy sites or logins, use the
 | ------------------- | -------------------------------------------- | ---------------------------------------- | -------------------------------------------- |
 | **Brave** (default) | Fast, structured results, free tier          | Traditional search results               | `BRAVE_API_KEY`                              |
 | **Perplexity**      | AI-synthesized answers, citations, real-time | Requires Perplexity or OpenRouter access | `OPENROUTER_API_KEY` or `PERPLEXITY_API_KEY` |
+| **DuckDuckGo**      | No API key, instant answers + related topics | Fewer results than Brave/Perplexity      | None                                         |
 
 See [Brave Search setup](/brave-search) and [Perplexity Sonar](/perplexity) for provider-specific details.
 
@@ -43,7 +45,7 @@ Set the provider in config:
   tools: {
     web: {
       search: {
-        provider: "brave", // or "perplexity"
+        provider: "brave", // or "perplexity" or "duckduckgo"
       },
     },
   },
@@ -63,6 +65,20 @@ Example: switch to Perplexity Sonar (direct API):
           baseUrl: "https://api.perplexity.ai",
           model: "perplexity/sonar-pro",
         },
+      },
+    },
+  },
+}
+```
+
+Example: use DuckDuckGo (no API key):
+
+```json5
+{
+  tools: {
+    web: {
+      search: {
+        provider: "duckduckgo",
       },
     },
   },
